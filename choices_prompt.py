@@ -21,6 +21,7 @@ Utility functions to facilitate prompting the user with a list of choices.
 
 import readline  # pylint: disable=unused-import  # noqa: F401  # Imported for side-effect.
 import sys
+import typing
 
 
 class AbortError(Exception):
@@ -29,7 +30,8 @@ class AbortError(Exception):
 
     If `cancelled` is True, no error message should be printed.
     """
-    def __init__(self, message=None, cancelled=False, exit_code=1):
+    def __init__(self, message: typing.Optional[str] = None,
+                 cancelled: bool = False, exit_code: int = 1) -> None:
         super().__init__(message or ("Cancelled."
                                      if cancelled
                                      else "Unknown error"))
@@ -38,7 +40,8 @@ class AbortError(Exception):
         self.exit_code = exit_code
 
 
-def prompt(message, choices, default=None):
+def prompt(message: str, choices: typing.Iterable[str], *,
+           default: typing.Optional[str] = None) -> str:
     """
     Prompts the user to choose from a list of choices.  Accepts any user input
     that unambiguously matches the start of one of the choices.  Matches are
@@ -50,12 +53,15 @@ def prompt(message, choices, default=None):
     """
     assert choices
     assert not default or default in choices
-    choices = [(choice.strip().lower(), choice) for choice in choices]
+    normalized_choices = [(choice.strip().lower(), choice)
+                          for choice in choices]
+    del choices
 
     while True:
         try:
-            response = input(message)
-            response = (response.strip().lower(), response)
+            raw_response = input(message)
+            response = (raw_response.strip().lower(), raw_response)
+            del raw_response
         except EOFError:
             print()
             raise AbortError(cancelled=True) from None
@@ -65,8 +71,8 @@ def prompt(message, choices, default=None):
                 return default
             continue
 
-        selected_choices = []
-        for choice in choices:
+        selected_choices: typing.List[typing.Tuple[str, str]] = []
+        for choice in normalized_choices:
             if choice[0].startswith(response[0]):
                 selected_choices.append(choice)
 
