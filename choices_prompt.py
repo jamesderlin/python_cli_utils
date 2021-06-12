@@ -1,6 +1,6 @@
 # choices_prompt
 #
-# Copyright (C) 2020 James D. Lin <jameslin@cal.berkeley.edu>
+# Copyright (C) 2020-2021 James D. Lin <jameslin@cal.berkeley.edu>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -40,6 +40,43 @@ class AbortError(Exception):
         self.exit_code = exit_code
 
 
+def flush_input():
+    """Clears pending input from `sys.stdin`."""
+    internal_helper = getattr(flush_input, "internal_helper", None)
+    if internal_helper is not None:
+        internal_helper()
+        return
+
+    import importlib  # pylint: disable=import-outside-toplevel
+
+    # For POSIX systems.
+    try:
+        termios = importlib.import_module("termios")
+    except ModuleNotFoundError:
+        pass
+    else:
+        def _internal_helper():
+            termios.tcflush(sys.stdin, termios.TCIOFLUSH)
+
+        flush_input.internal_helper = _internal_helper
+        _internal_helper()
+        return
+
+    # For Windows systems.
+    try:
+        msvcrt = importlib.import_module("msvcrt")
+    except ModuleNotFoundError:
+        pass
+    else:
+        def _internal_helper():
+            while msvcrt.kbhit():
+                msvcrt.getch()
+
+        flush_input.internal_helper = _internal_helper
+        _internal_helper()
+        return
+
+
 def prompt(message: str, choices: typing.Iterable[str], *,
            default: typing.Optional[str] = None) -> str:
     """
@@ -59,6 +96,9 @@ def prompt(message: str, choices: typing.Iterable[str], *,
 
     while True:
         try:
+            # Answering prompts with aleady-buffered input (particularly with
+            # empty lines) is potentially dangerous, so disallow it.
+            flush_input()
             raw_response = input(message)
             response = (raw_response.strip().lower(), raw_response)
             del raw_response
