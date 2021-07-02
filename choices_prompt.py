@@ -61,8 +61,8 @@ def flush_input():
         return
 
 
-def prompt(message: str, choices: typing.Iterable[str], *,
-           default: typing.Optional[str] = None) -> str:
+def choices_prompt(message: str, choices: typing.Iterable[str], *,
+                   default: typing.Optional[str] = None) -> str:
     """
     Prompts the user to choose from a list of choices.  Accepts any user input
     that unambiguously matches the start of one of the choices.  Matches are
