@@ -40,7 +40,7 @@ def flush_input():
         pass
     else:
         def _internal_helper():
-            termios.tcflush(sys.stdin, termios.TCIOFLUSH)
+            termios.tcflush(sys.stdin, termios.TCIFLUSH)
 
         flush_input.internal_helper = _internal_helper
         _internal_helper()
@@ -80,7 +80,7 @@ def choices_prompt(message: str, choices: typing.Iterable[str], *,
 
     while True:
         try:
-            # Answering prompts with aleady-buffered input (particularly with
+            # Answering prompts with already-buffered input (particularly with
             # empty lines) is potentially dangerous, so disallow it.
             flush_input()
             raw_response = input(message)
