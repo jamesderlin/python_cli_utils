@@ -84,25 +84,24 @@ def choices_prompt(message: str, choices: typing.Iterable[str], *,
             # empty lines) is potentially dangerous, so disallow it.
             flush_input()
             raw_response = input(message)
-            response = (raw_response.strip().lower(), raw_response)
-            del raw_response
+            normalized_response = raw_response.strip().lower()
         except EOFError:
             print()
             raise
 
-        if not response[0]:
+        if not normalized_response:
             if default:
                 return default
             continue
 
         selected_choices: typing.List[typing.Tuple[str, str]] = []
         for choice in normalized_choices:
-            if choice[0].startswith(response[0]):
+            if choice[0].startswith(normalized_response):
                 selected_choices.append(choice)
 
         if not selected_choices:
-            print(f"Invalid choice: {response[1]}", file=sys.stderr)
+            print(f"Invalid choice: {raw_response}", file=sys.stderr)
         elif len(selected_choices) == 1:
             return selected_choices[0][1]
         else:
-            print(f"Ambiguous choice: {response[1]}", file=sys.stderr)
+            print(f"Ambiguous choice: {raw_response}", file=sys.stderr)
