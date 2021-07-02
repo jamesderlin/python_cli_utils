@@ -24,22 +24,6 @@ import sys
 import typing
 
 
-class AbortError(Exception):
-    """
-    A simple exception class to abort program execution.
-
-    If `cancelled` is True, no error message should be printed.
-    """
-    def __init__(self, message: typing.Optional[str] = None,
-                 cancelled: bool = False, exit_code: int = 1) -> None:
-        super().__init__(message or ("Cancelled."
-                                     if cancelled
-                                     else "Unknown error"))
-        assert exit_code != 0
-        self.cancelled = cancelled
-        self.exit_code = exit_code
-
-
 def flush_input():
     """Clears pending input from `sys.stdin`."""
     internal_helper = getattr(flush_input, "internal_helper", None)
@@ -86,7 +70,7 @@ def prompt(message: str, choices: typing.Iterable[str], *,
 
     Returns the selected choice.
 
-    Raises an `AbortError` if the user cancels the prompt by sending EOF.
+    Raises an `EOFError` if the user cancels the prompt by sending EOF.
     """
     assert choices
     assert not default or default in choices
@@ -104,7 +88,7 @@ def prompt(message: str, choices: typing.Iterable[str], *,
             del raw_response
         except EOFError:
             print()
-            raise AbortError(cancelled=True) from None
+            raise
 
         if not response[0]:
             if default:
