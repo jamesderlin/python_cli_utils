@@ -61,7 +61,7 @@ def flush_input():
         return
 
 
-def choices_prompt(message: str, choices: typing.Iterable[str], *,
+def choices_prompt(message: str, choices: typing.Collection[str], *,
                    default: typing.Optional[str] = None) -> str:
     """
     Prompts the user to choose from a list of choices.  Accepts any user input
@@ -70,12 +70,18 @@ def choices_prompt(message: str, choices: typing.Iterable[str], *,
 
     Returns the selected choice.
 
+    If there is only one choice, returned the choice without prompting.
+
     Raises an `EOFError` if the user cancels the prompt by sending EOF.
     """
     assert choices
     assert not default or default in choices
-    normalized_choices = [(choice.strip().lower(), choice)
-                          for choice in choices]
+
+    if len(choices) == 1:
+        return next(iter(choices))
+
+    normalized_choices = {(choice.strip().lower(), choice)
+                          for choice in choices}
     del choices
 
     while True:
