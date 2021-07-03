@@ -102,6 +102,9 @@ def choices_prompt(message: str, choices: typing.Collection[str], *,
 
         selected_choices: typing.List[typing.Tuple[str, str]] = []
         for choice in normalized_choices:
+            if choice[0] == normalized_response:
+                selected_choices = [choice]
+                break
             if choice[0].startswith(normalized_response):
                 selected_choices.append(choice)
 
@@ -110,4 +113,7 @@ def choices_prompt(message: str, choices: typing.Collection[str], *,
         elif len(selected_choices) == 1:
             return selected_choices[0][1]
         else:
-            print(f"Ambiguous choice: {raw_response}", file=sys.stderr)
+            raw_choices = ", ".join((choice[1] for choice in selected_choices))
+            print(f"Ambiguous choice: {raw_response}\n"
+                  f"Could be: {raw_choices}",
+                  file=sys.stderr)
