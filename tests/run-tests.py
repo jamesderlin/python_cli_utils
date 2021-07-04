@@ -31,7 +31,7 @@ def assert_has_keywords(
     return helper
 
 
-def fake_flush_input(*_args, **_kwargs) -> None:
+def fake_flush_input(*_args: typing.Any, **_kwargs: typing.Any) -> None:
     """
     Fake implementation for `choices_prompt.flush_input` that does nothing.
     """

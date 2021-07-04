@@ -24,7 +24,7 @@ import sys
 import typing
 
 
-def flush_input():
+def flush_input() -> None:
     """Clears pending input from `sys.stdin`."""
     internal_helper = getattr(flush_input, "internal_helper", None)
     if internal_helper is not None:
@@ -35,28 +35,28 @@ def flush_input():
 
     # For POSIX systems.
     try:
-        termios = importlib.import_module("termios")
+        termios: typing.Any = importlib.import_module("termios")
     except ModuleNotFoundError:
         pass
     else:
-        def _internal_helper():
+        def _internal_helper() -> None:
             termios.tcflush(sys.stdin, termios.TCIFLUSH)
 
-        flush_input.internal_helper = _internal_helper
+        flush_input.internal_helper = _internal_helper  # type: ignore
         _internal_helper()
         return
 
     # For Windows systems.
     try:
-        msvcrt = importlib.import_module("msvcrt")
+        msvcrt: typing.Any = importlib.import_module("msvcrt")
     except ModuleNotFoundError:
         pass
     else:
-        def _internal_helper():
+        def _internal_helper() -> None:
             while msvcrt.kbhit():
                 msvcrt.getch()
 
-        flush_input.internal_helper = _internal_helper
+        flush_input.internal_helper = _internal_helper  # type: ignore
         _internal_helper()
         return
 
