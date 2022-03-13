@@ -1,6 +1,6 @@
 # choices_prompt
 #
-# Copyright (C) 2020-2021 James D. Lin <jameslin@cal.berkeley.edu>
+# Copyright (C) 2020-2021 James D. Lin <jamesdlin@berkeley.edu>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
