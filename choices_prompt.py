@@ -61,59 +61,110 @@ def flush_input() -> None:
         return
 
 
-def choices_prompt(message: str, choices: typing.Collection[str], *,
-                   default: typing.Optional[str] = None) -> str:
+def choices_prompt(
+    prompt: str,
+    choices: typing.Union[typing.Collection[str],
+                          typing.Collection[typing.Sequence[str]]],
+    *,
+    default: typing.Optional[str] = None,
+    invalid_handler: typing.Optional[typing.Callable[[str], str]] = None,
+) -> typing.Optional[str]:
     """
-    Prompts the user to choose from a list of choices.  Accepts any user input
-    that unambiguously matches the start of one of the choices.  Matches are
-    case-insensitive.
+    Prompts the user to choose from a fixed list of choices.
 
-    Returns the selected choice.
+    `prompt` specifies the string to print when prompting for input.
 
-    If there is only one choice, returned the choice without prompting.
+    `choices` must be an iterable where each element is either a single string
+    or a tuple of strings.  Each tuple consists of acceptable inputs for a
+    single choice.
 
-    Raises an `EOFError` if the user cancels the prompt by sending EOF.
+    Returns a string indicating the selected choice.  If the choice corresponds
+    to a tuple, the first element of the chosen tuple is considered canonical
+    and will be returned.
+
+    Returns `None` if the user enters EOF to exit the prompt or if `choices` is
+    empty.
+
+    Choice selection is case-insensitive but case-preserving.  That is, an
+    available choice of `"Yes"` will match against input of `"YES"`, and
+    `"Yes"` will be returned.  Leading and trailing whitespace is ignored.
+
+    `default` specifies the default value to return if the user accepts the
+    prompt with empty input (an empty string or a string consisting entirely of
+    whitespace). `default` must be either be `None` or a string in `choices`.
+    If `None`, the user will be required to provide valid, non-empty input (or
+    enter EOF) to exit the prompt.
+
+    If the user enters an invalid choice, `invalid_handler` will be called with
+    the invalid input and should return an appropriate error message.  If
+    `invalid_handler` is `None`, a default error message will be generated.
+    `invalid_handler` can be used to provide more details about what legal
+    inputs are.
+
+    Example:
+    ```python
+    response = choices_prompt("Continue? (y/N) ",
+                              (("y", "yes"), ("n", "no")),
+                              default="n")
+    if response is None:
+        raise AbortError(cancelled=True)
+    if response == "y":
+        # ...
+    else:
+        assert response == "n"
+        # ...
+    ```
     """
-    assert choices
-    assert not default or default in choices
+    def normalize_choice_str(s: str) -> str:
+        """
+        Helper function to transform a choice string to a standard
+        representation for easier comparison later.
+        """
+        assert isinstance(s, str)
+        return s.strip().casefold()
 
-    if len(choices) == 1:
-        return next(iter(choices))
+    if not choices:
+        return None
 
-    normalized_choices = {(choice.strip().lower(), choice)
-                          for choice in choices}
-    del choices
+    # Transform top-level elements that are single strings to be one-element
+    # tuples.
+    choices = [(choice,) if isinstance(choice, str) else choice
+               for choice in choices]
+
+    choices_table = {
+        normalize_choice_str(choice_str): choice_tuple[0]
+        for choice_tuple in choices
+        for choice_str in choice_tuple
+    }
+
+    if default is not None:
+        default = normalize_choice_str(default)
+        assert default in choices_table
+
+    def default_invalid_handler(response: str) -> str:
+        return f"\"{response}\" is not a valid choice."
+
+    invalid_handler = invalid_handler or default_invalid_handler
 
     while True:
         try:
             # Answering prompts with already-buffered input (particularly with
             # empty lines) is potentially dangerous, so disallow it.
             flush_input()
-            raw_response = input(message)
-            normalized_response = raw_response.strip().lower()
+            raw_response = input(prompt)
+            normalized_response = normalize_choice_str(raw_response)
         except EOFError:
             print()
-            raise
+            return None
 
         if not normalized_response:
-            if default:
-                return default
-            continue
+            if default is None:
+                continue
+            return choices_table[default]
 
-        selected_choices: typing.List[typing.Tuple[str, str]] = []
-        for choice in normalized_choices:
-            if choice[0] == normalized_response:
-                selected_choices = [choice]
-                break
-            if choice[0].startswith(normalized_response):
-                selected_choices.append(choice)
+        try:
+            return choices_table[normalized_response]
+        except KeyError:
+            print(invalid_handler(raw_response), file=sys.stderr)
 
-        if not selected_choices:
-            print(f"Invalid choice: {raw_response}", file=sys.stderr)
-        elif len(selected_choices) == 1:
-            return selected_choices[0][1]
-        else:
-            raw_choices = ", ".join((choice[1] for choice in selected_choices))
-            print(f"Ambiguous choice: {raw_response}\n"
-                  f"Could be: {raw_choices}",
-                  file=sys.stderr)
+        print()

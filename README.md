@@ -7,4 +7,4 @@ PyPI package.
 
 ---
 
-Copyright © 2020-2021 James D. Lin.
+Copyright © 2020-2022 James D. Lin.

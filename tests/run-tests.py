@@ -5,11 +5,33 @@
 import contextlib
 import dataclasses
 import io
+import re
 import typing
 import unittest
 import unittest.mock
 
 import choices_prompt
+
+
+whitespace = re.compile(r"\s+")
+
+
+def collapse_whitespace(s: str) -> str:
+    """
+    Returns a copy of the given string with each sequence of consecutive
+    whitespace replaced with a single string.
+    """
+    return re.sub(whitespace, " ", s)
+
+
+def assert_strings_equal_ignoring_whitespace(
+    test_case: unittest.TestCase,
+    s1: str,
+    s2: str,
+) -> None:
+    """Tests that two strings are equal, ignoring whitespace differences."""
+    test_case.assertEqual(collapse_whitespace(s1).strip(),
+                          collapse_whitespace(s2).strip())
 
 
 def assert_has_keywords(
@@ -18,8 +40,9 @@ def assert_has_keywords(
     case_insensitive: typing.Optional[typing.List[str]] = None,
 ) -> typing.Callable[[str], None]:
     """
-    Returns a function that, given an input string, runs `unittest.TestCase`
-    assertions that the string includes all of the specified keywords.
+    Returns a function that, called with an input string, runs
+    `unittest.TestCase` assertions that the string includes all of the
+    specified keywords.
     """
     def helper(text: str) -> None:
         for keyword in case_sensitive or []:
@@ -70,8 +93,9 @@ def mock_io(input: str = "") -> typing.Iterator[MockedIO]:  # pylint: disable=re
 
 def expect_test_choices(
     test_case: unittest.TestCase,
-    message: str,
-    choices: typing.Sequence[str],
+    prompt: str,
+    choices: typing.Union[typing.Collection[str],
+                          typing.Collection[typing.Sequence[str]]],
     *,
     default: typing.Optional[str] = None,
     input: str = "",  # pylint: disable=redefined-builtin
@@ -83,20 +107,24 @@ def expect_test_choices(
     Verifies the typical behavior of `choices_prompt.choices_prompt`, setting
     up necessary mocks.
     """
-    expected_stdout = message * expected_tries
-
     response: typing.Optional[str] = None
+    expect_trailing_newline = False
     with mock_io(input) as mocked_io:
-        try:
-            response = choices_prompt.choices_prompt(message=message,
-                                                     choices=choices,
-                                                     default=default)
-        except EOFError:
-            expected_stdout += "\n"
+        response = choices_prompt.choices_prompt(prompt=prompt,
+                                                 choices=choices,
+                                                 default=default)
+        if response is None:
+            expect_trailing_newline = True
 
     test_case.assertEqual(response, expected_response)
     mocked_io.stdout.seek(0)
-    test_case.assertEqual(mocked_io.stdout.read(), expected_stdout)
+
+    stdout = mocked_io.stdout.read()
+    if expect_trailing_newline:
+        test_case.assertTrue(stdout.endswith("\n"))
+    assert_strings_equal_ignoring_whitespace(test_case,
+                                             stdout,
+                                             prompt * expected_tries)
 
     if stderr_assert:
         mocked_io.stderr.seek(0)
@@ -136,14 +164,6 @@ class TestChoicesPrompt(unittest.TestCase):
                             input="FOO\n",
                             expected_response="Foo")
 
-    def test_prefix_input(self) -> None:
-        """Tests that entering an unambiguous prefix of a choice matches."""
-        expect_test_choices(self,
-                            "Test message? ",
-                            ("Foo", "Bar", "Baz"),
-                            input="f\n",
-                            expected_response="Foo")
-
     def test_whitespace_input(self) -> None:
         """
         Tests that leading and trailing whitespace is ignored from choices.
@@ -151,12 +171,12 @@ class TestChoicesPrompt(unittest.TestCase):
         expect_test_choices(self,
                             "Test message? ",
                             ("Foo", "Bar", "Baz"),
-                            input=" f \n",
+                            input=" foo \n",
                             expected_response="Foo")
         expect_test_choices(self,
                             "Test message? ",
                             (" Foo ", "Bar", "Baz"),
-                            input="f\n",
+                            input="foo\n",
                             expected_response=" Foo ")
 
     def test_default_input(self) -> None:
@@ -210,9 +230,11 @@ class TestChoicesPrompt(unittest.TestCase):
             input="qux",
             expected_tries=2,
             expected_response=None,
-            stderr_assert=assert_has_keywords(self,
-                                              case_sensitive=["qux"],
-                                              case_insensitive=["invalid"]),
+            stderr_assert=assert_has_keywords(
+                self,
+                case_sensitive=["qux"],
+                case_insensitive=["not a valid"],
+            ),
         )
 
         expect_test_choices(
@@ -222,72 +244,30 @@ class TestChoicesPrompt(unittest.TestCase):
             input="FooBarBaz",
             expected_tries=2,
             expected_response=None,
-            stderr_assert=assert_has_keywords(self,
-                                              case_sensitive=["FooBarBaz"],
-                                              case_insensitive=["invalid"]),
+            stderr_assert=assert_has_keywords(
+                self,
+                case_sensitive=["FooBarBaz"],
+                case_insensitive=["not a valid"],
+            ),
         )
-
-    def test_ambiguous_prefix(self) -> None:
-        """
-        Tests that the prompt is repeated with an appropriate error message if
-        an ambiguous prefix is entered.
-        """
-        expect_test_choices(
-            self,
-            "Test message? ",
-            ("Foo", "Bar", "Baz"),
-            input="BA",
-            expected_tries=2,
-            expected_response=None,
-            stderr_assert=assert_has_keywords(self,
-                                              case_sensitive=["BA"],
-                                              case_insensitive=["ambiguous"]),
-        )
-
-    def test_ambiguous_prefix_exact_match(self) -> None:
-        """
-        Tests that a choice is not ambiguous if it matches a choice exactly.
-        """
-        expect_test_choices(self,
-                            "Test message? ",
-                            ("Foo", "FooBar", "Baz"),
-                            input="Foo\n",
-                            expected_response="Foo")
-        expect_test_choices(self,
-                            "Test message? ",
-                            ("FooBar", "Foo", "Baz"),
-                            input="Foo\n",
-                            expected_response="Foo")
 
     def test_invalid_default(self) -> None:
         """Tests that the default value must match one of the choices."""
         with mock_io():
             self.assertRaises(AssertionError,
                               choices_prompt.choices_prompt,
-                              message="Test message? ",
+                              prompt="Test message? ",
                               choices=("Foo", "Bar", "Baz"),
                               default="qux")
 
-            self.assertRaises(AssertionError,
-                              choices_prompt.choices_prompt,
-                              message="Test message? ",
-                              choices=("Foo", "Bar", "Baz"),
-                              default="foo")
-
     def test_no_choices(self) -> None:
-        """Tests that choices must be non-empty."""
-        with mock_io():
-            self.assertRaises(AssertionError,
-                              choices_prompt.choices_prompt,
-                              message="Test message? ",
-                              choices=())
-
-    def test_one_choices(self) -> None:
-        """Tests that no prompt is printed if there is only one choice."""
+        """
+        Tests that no prompt is printed and `None` is returned if choices is
+        empty.
+        """
         with mock_io() as mocked_io:
-            response = choices_prompt.choices_prompt(message="Test message? ",
-                                                     choices=("foo",))
-            self.assertEqual(response, "foo")
+            response = choices_prompt.choices_prompt("Test message? ", ())
+            self.assertEqual(response, None)
             self.assertFalse(mocked_io.stdout.read())
             self.assertFalse(mocked_io.stderr.read())
 
