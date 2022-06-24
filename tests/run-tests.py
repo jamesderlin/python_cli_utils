@@ -6,6 +6,7 @@ import contextlib
 import dataclasses
 import io
 import re
+import sys
 import typing
 import unittest
 import unittest.mock
@@ -326,35 +327,52 @@ class TestNumberedChoicesPrompt(unittest.TestCase):
         Tests that the prompt is repeated with an appropriate error message if
         invalid input is entered.
         """
-        with mock_io(input="0\nx\nhelp\nquit\n") as mocked_io:
+        choices = ("foo", "bar", "baz")
+        preamble = "Instructions"
+
+        test_input = "0\nx\nhelp\nquit\n"
+        expected_output = (
+            "Instructions\n"
+            "  1: foo\n"
+            "  2: bar\n"
+            "  3: baz\n"
+            "[1..3]: "
+            "\"0\" is not a valid choice.\n"
+            "The entered choice must be between 1 and 3, inclusive.\n"
+            "Enter \"help\" to show the choices again or \"quit\" to quit.\n"
+            "\n"
+            "[1..3]: "
+            "\"x\" is not a valid choice.\n"
+            "The entered choice must be between 1 and 3, inclusive.\n"
+            "Enter \"help\" to show the choices again or \"quit\" to quit.\n"
+            "\n"
+            "[1..3]: \n"
+            "Instructions\n"
+            "  1: foo\n"
+            "  2: bar\n"
+            "  3: baz\n"
+            "[1..3]: "
+        )
+
+        with mock_io(input=test_input) as mocked_io:
             response = choices_prompt.numbered_choices_prompt(
-                ("foo", "bar", "baz"),
-                preamble="Instructions",
+                choices,
+                preamble=preamble,
             )
             self.assertIs(response, None)
-            self.assertEqual(
-                read_contents(mocked_io.stdout),
-                "Instructions\n"
-                "  1: foo\n"
-                "  2: bar\n"
-                "  3: baz\n"
-                "[1..3]: "
-                "\"0\" is not a valid choice.\n"
-                "The entered choice must be between 1 and 3, inclusive.\n"
-                "Enter \"help\" to show the choices again or \"quit\" to quit.\n"
-                "\n"
-                "[1..3]: "
-                "\"x\" is not a valid choice.\n"
-                "The entered choice must be between 1 and 3, inclusive.\n"
-                "Enter \"help\" to show the choices again or \"quit\" to quit.\n"
-                "\n"
-                "[1..3]: \n"
-                "Instructions\n"
-                "  1: foo\n"
-                "  2: bar\n"
-                "  3: baz\n"
-                "[1..3]: ")
+            self.assertEqual(read_contents(mocked_io.stdout), expected_output)
             self.assertEqual(read_contents(mocked_io.stderr), "")
+
+        # Test that all output can be sent to `sys.stderr` instead.
+        with mock_io(input=test_input) as mocked_io:
+            response = choices_prompt.numbered_choices_prompt(
+                choices,
+                preamble=preamble,
+                file=sys.stderr
+            )
+            self.assertIs(response, None)
+            self.assertEqual(read_contents(mocked_io.stdout), "")
+            self.assertEqual(read_contents(mocked_io.stderr), expected_output)
 
 
 if __name__ == "__main__":

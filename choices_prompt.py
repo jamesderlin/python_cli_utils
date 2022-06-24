@@ -68,6 +68,7 @@ def choices_prompt(
     *,
     default: typing.Optional[str] = None,
     invalid_handler: typing.Optional[typing.Callable[[str], str]] = None,
+    file: typing.Optional[typing.TextIO] = None,
 ) -> typing.Optional[str]:
     """
     Prompts the user to choose from a fixed list of choices.
@@ -100,6 +101,9 @@ def choices_prompt(
     `invalid_handler` is `None`, a default error message will be generated.
     `invalid_handler` can be used to provide more details about what legal
     inputs are.
+
+    `file` specifies the output stream to print to.  If not specified, defaults
+    to `sys.stdout`.
 
     Example:
     ```python
@@ -145,16 +149,18 @@ def choices_prompt(
         return f"\"{response}\" is not a valid choice."
 
     invalid_handler = invalid_handler or default_invalid_handler
+    file = file or sys.stdout
 
     while True:
         try:
             # Answering prompts with already-buffered input (particularly with
             # empty lines) is potentially dangerous, so disallow it.
             flush_input()
-            raw_response = input(prompt)
+            print(prompt, end="", file=file, flush=True)
+            raw_response = input()
             normalized_response = normalize_choice_str(raw_response)
         except EOFError:
-            print()
+            print(file=file)
             return None
 
         if not normalized_response:
@@ -165,9 +171,9 @@ def choices_prompt(
         try:
             return choices_table[normalized_response]
         except KeyError:
-            print(invalid_handler(raw_response))
+            print(invalid_handler(raw_response), file=file)
 
-        print()
+        print(file=file)
 
 
 def numbered_choices_prompt(
@@ -177,6 +183,7 @@ def numbered_choices_prompt(
     preamble: str = "",
     prompt: typing.Optional[str] = None,
     item_formatter: typing.Optional[typing.Callable[[str], str]] = None,
+    file: typing.Optional[typing.TextIO] = None,
 ) -> typing.Optional[int]:
     """
     Prompts the user to choose from a potentially variable list of choices.
@@ -199,6 +206,9 @@ def numbered_choices_prompt(
     `preamble` specifies a string to print before the list of choices is
     printed. `preamble` and the list of choices are printed before the initial
     prompt and whenever the user explicitly requests them by entering `"help"`.
+
+    `file` specifies the output stream to print to.  If not specified, defaults
+    to `sys.stdout`.
     """
     if not choices:
         return None
@@ -214,6 +224,7 @@ def numbered_choices_prompt(
         return x
 
     item_formatter = item_formatter or identity
+    file = file or sys.stdout
 
     instructions = "\n".join([
         *((preamble,) if preamble else ()),
@@ -221,7 +232,7 @@ def numbered_choices_prompt(
           for (i, choice) in enumerate(choices, 1)),
     ])
 
-    print(instructions)
+    print(instructions, file=file)
 
     default_hint = "" if default_index is None else f"[{default_index + 1}] "
     default_prompt = (f"[1, 2]: {default_hint}" if max_choice == 2 else
@@ -245,13 +256,14 @@ def numbered_choices_prompt(
             prompt,
             allowed_inputs,
             default=None if default_index is None else str(default_index + 1),
+            file=file,
             invalid_handler=invalid_handler)
         if response is None or response == "q":
             return None
 
         if response == "?":
-            print()
-            print(instructions)
+            print(file=file)
+            print(instructions, file=file)
             continue
 
         choice = int(response)
