@@ -16,48 +16,16 @@ import choices_prompt
 whitespace = re.compile(r"\s+")
 
 
-def collapse_whitespace(s: str) -> str:
-    """
-    Returns a copy of the given string with each sequence of consecutive
-    whitespace replaced with a single string.
-    """
-    return re.sub(whitespace, " ", s)
-
-
-def assert_strings_equal_ignoring_whitespace(
-    test_case: unittest.TestCase,
-    s1: str,
-    s2: str,
-) -> None:
-    """Tests that two strings are equal, ignoring whitespace differences."""
-    test_case.assertEqual(collapse_whitespace(s1).strip(),
-                          collapse_whitespace(s2).strip())
-
-
-def assert_has_keywords(
-    test_case: unittest.TestCase,
-    case_sensitive: typing.Optional[typing.List[str]] = None,
-    case_insensitive: typing.Optional[typing.List[str]] = None,
-) -> typing.Callable[[str], None]:
-    """
-    Returns a function that, called with an input string, runs
-    `unittest.TestCase` assertions that the string includes all of the
-    specified keywords.
-    """
-    def helper(text: str) -> None:
-        for keyword in case_sensitive or []:
-            test_case.assertIn(keyword, text)
-
-        lower_text = text.lower()
-        for keyword in case_insensitive or []:
-            test_case.assertIn(keyword.lower(), lower_text)
-    return helper
-
-
 def fake_flush_input(*_args: typing.Any, **_kwargs: typing.Any) -> None:
     """
     Fake implementation for `choices_prompt.flush_input` that does nothing.
     """
+
+
+def read_contents(f: typing.TextIO) -> str:
+    """Returns the full contents of a `TextIO` stream."""
+    f.seek(0)
+    return f.read()
 
 
 @dataclasses.dataclass
@@ -71,7 +39,7 @@ class MockedIO:
 
 
 @contextlib.contextmanager
-def mock_io(input: str = "") -> typing.Iterator[MockedIO]:  # pylint: disable=redefined-builtin
+def mock_io(*, input: str = "") -> typing.Iterator[MockedIO]:  # pylint: disable=redefined-builtin
     """
     Context manager that sets up mocked versions of `sys.stdin` (with the
     specified input), `sys.stdout`, and `sys.stderr`.
@@ -100,35 +68,29 @@ def expect_test_choices(
     default: typing.Optional[str] = None,
     input: str = "",  # pylint: disable=redefined-builtin
     expected_response: typing.Optional[str],
-    expected_tries: int = 1,
-    stderr_assert: typing.Optional[typing.Callable[[str], None]] = None,
+    expected_stdout: typing.Optional[str] = None,
+    expected_stderr: str = "",
 ) -> None:
     """
     Verifies the typical behavior of `choices_prompt.choices_prompt`, setting
     up necessary mocks.
     """
     response: typing.Optional[str] = None
-    expect_trailing_newline = False
-    with mock_io(input) as mocked_io:
+
+    if expected_stdout is None:
+        expected_stdout = prompt
+
+    with mock_io(input=input) as mocked_io:
         response = choices_prompt.choices_prompt(prompt=prompt,
                                                  choices=choices,
                                                  default=default)
         if response is None:
-            expect_trailing_newline = True
+            expected_stdout += "\n"
 
     test_case.assertEqual(response, expected_response)
-    mocked_io.stdout.seek(0)
 
-    stdout = mocked_io.stdout.read()
-    if expect_trailing_newline:
-        test_case.assertTrue(stdout.endswith("\n"))
-    assert_strings_equal_ignoring_whitespace(test_case,
-                                             stdout,
-                                             prompt * expected_tries)
-
-    if stderr_assert:
-        mocked_io.stderr.seek(0)
-        stderr_assert(mocked_io.stderr.read())
+    test_case.assertEqual(read_contents(mocked_io.stdout), expected_stdout)
+    test_case.assertEqual(read_contents(mocked_io.stderr), expected_stderr)
 
 
 class TestChoicesPrompt(unittest.TestCase):
@@ -179,6 +141,24 @@ class TestChoicesPrompt(unittest.TestCase):
                             input="foo\n",
                             expected_response=" Foo ")
 
+    def test_canonical_responses(self) -> None:
+        """Tests that the canonical response is returned."""
+        expect_test_choices(self,
+                            "Test message? ",
+                            (("f", "Foo"), ("Bar",), ("Baz",)),
+                            input="Foo\n",
+                            expected_response="f")
+        expect_test_choices(self,
+                            "Test message? ",
+                            (("f", "Foo"), ("Bar",), ("Baz",)),
+                            input="f\n",
+                            expected_response="f")
+        expect_test_choices(self,
+                            "Test message? ",
+                            (("f", "Foo"), ("Bar",), ("Baz",)),
+                            input="foo\n",
+                            expected_response="f")
+
     def test_default_input(self) -> None:
         """
         Tests that the default choice is returned if an empty line is entered.
@@ -195,30 +175,37 @@ class TestChoicesPrompt(unittest.TestCase):
                             default="Foo",
                             input=" \n",
                             expected_response="Foo")
+        expect_test_choices(self,
+                            "Test message? ",
+                            ("Foo", "Bar", "Baz"),
+                            default="foo",
+                            input="\n",
+                            expected_response="Foo")
 
     def test_no_default(self) -> None:
         """
         Tests that the prompt is repeated if an empty line is entered with no
         default.
         """
+        prompt = "Test message? "
         expect_test_choices(
             self,
-            "Test message? ",
+            prompt,
             ("Foo", "Bar", "Baz"),
             input="\n\n",
-            expected_tries=3,
+            expected_stdout=prompt * 3,
             expected_response=None,
         )
 
     def test_eof(self) -> None:
-        """Tests that `EOFError` is raised if there is no input."""
+        """Tests that `None` is returned if there is no input."""
         expect_test_choices(self,
                             "Test message? ",
                             ("Foo", "Bar", "Baz"),
                             input="",
                             expected_response=None)
 
-    def test_invalid(self) -> None:
+    def test_invalid_input(self) -> None:
         """
         Tests that the prompt is repeated with an appropriate error message if
         invalid input is entered.
@@ -228,27 +215,23 @@ class TestChoicesPrompt(unittest.TestCase):
             "Test message? ",
             ("Foo", "Bar", "Baz"),
             input="qux",
-            expected_tries=2,
+            expected_stdout="Test message? "
+                            "\"qux\" is not a valid choice.\n"
+                            "\n"
+                            "Test message? ",
             expected_response=None,
-            stderr_assert=assert_has_keywords(
-                self,
-                case_sensitive=["qux"],
-                case_insensitive=["not a valid"],
-            ),
         )
 
         expect_test_choices(
             self,
             "Test message? ",
-            ("Foo", "Bar", "Baz"),
-            input="FooBarBaz",
-            expected_tries=2,
+            (("f", "Foo"), ("Bar",), ("Baz",)),
+            input="fo",
+            expected_stdout="Test message? "
+                            "\"fo\" is not a valid choice.\n"
+                            "\n"
+                            "Test message? ",
             expected_response=None,
-            stderr_assert=assert_has_keywords(
-                self,
-                case_sensitive=["FooBarBaz"],
-                case_insensitive=["not a valid"],
-            ),
         )
 
     def test_invalid_default(self) -> None:
@@ -267,9 +250,111 @@ class TestChoicesPrompt(unittest.TestCase):
         """
         with mock_io() as mocked_io:
             response = choices_prompt.choices_prompt("Test message? ", ())
-            self.assertEqual(response, None)
-            self.assertFalse(mocked_io.stdout.read())
-            self.assertFalse(mocked_io.stderr.read())
+            self.assertIs(response, None)
+            self.assertFalse(read_contents(mocked_io.stdout))
+            self.assertFalse(read_contents(mocked_io.stderr))
+
+
+class TestNumberedChoicesPrompt(unittest.TestCase):
+    """Tests `choices_prompt.numbered_choices_prompt`."""
+    def test_instructions(self) -> None:
+        """Tests that instructions and choices are printed."""
+        with mock_io(input="1\n") as mocked_io:
+            response = choices_prompt.numbered_choices_prompt(
+                ("foo", "bar", "baz"),
+                preamble="Instructions",
+                prompt="Choose wisely",
+            )
+            self.assertEqual(response, 0)
+            self.assertEqual(read_contents(mocked_io.stdout),
+                             "Instructions\n"
+                             "  1: foo\n"
+                             "  2: bar\n"
+                             "  3: baz\n"
+                             "Choose wisely [1..3]: ")
+            self.assertEqual(read_contents(mocked_io.stderr), "")
+
+    def test_default_prompt(self) -> None:
+        """Tests the default prompt."""
+        with mock_io(input="2\n") as mocked_io:
+            response = choices_prompt.numbered_choices_prompt(
+                ("foo", "bar", "baz"),
+            )
+            self.assertEqual(response, 1)
+            self.assertEqual(read_contents(mocked_io.stdout),
+                             "  1: foo\n"
+                             "  2: bar\n"
+                             "  3: baz\n"
+                             "[1..3]: ")
+            self.assertEqual(read_contents(mocked_io.stderr), "")
+
+    def test_no_choices(self) -> None:
+        """Tests that nothing is printed if there are no choices."""
+        with mock_io() as mocked_io:
+            response = choices_prompt.numbered_choices_prompt(())
+            self.assertIs(response, None)
+            self.assertEqual(read_contents(mocked_io.stdout), "")
+            self.assertEqual(read_contents(mocked_io.stderr), "")
+
+    def test_one_choice(self) -> None:
+        """
+        Tests a single choice is automatically returned with nothing printed.
+        """
+        with mock_io() as mocked_io:
+            response = choices_prompt.numbered_choices_prompt(("foo",))
+            self.assertEqual(response, 0)
+            self.assertEqual(read_contents(mocked_io.stdout), "")
+            self.assertEqual(read_contents(mocked_io.stderr), "")
+
+    def test_default_index(self) -> None:
+        """Tests the `default index` parameter."""
+        with mock_io(input="\n") as mocked_io:
+            response = choices_prompt.numbered_choices_prompt(
+                ("foo", "bar", "baz"),
+                default_index=0,
+            )
+            self.assertEqual(response, 0)
+            self.assertEqual(read_contents(mocked_io.stdout),
+                             "  1: foo\n"
+                             "  2: bar\n"
+                             "  3: baz\n"
+                             "[1..3]: [1] ")
+            self.assertEqual(read_contents(mocked_io.stderr), "")
+
+    def test_invalid_input(self) -> None:
+        """
+        Tests that the prompt is repeated with an appropriate error message if
+        invalid input is entered.
+        """
+        with mock_io(input="0\nx\nhelp\nquit\n") as mocked_io:
+            response = choices_prompt.numbered_choices_prompt(
+                ("foo", "bar", "baz"),
+                preamble="Instructions",
+            )
+            self.assertIs(response, None)
+            self.assertEqual(
+                read_contents(mocked_io.stdout),
+                "Instructions\n"
+                "  1: foo\n"
+                "  2: bar\n"
+                "  3: baz\n"
+                "[1..3]: "
+                "\"0\" is not a valid choice.\n"
+                "The entered choice must be between 1 and 3, inclusive.\n"
+                "Enter \"help\" to show the choices again or \"quit\" to quit.\n"
+                "\n"
+                "[1..3]: "
+                "\"x\" is not a valid choice.\n"
+                "The entered choice must be between 1 and 3, inclusive.\n"
+                "Enter \"help\" to show the choices again or \"quit\" to quit.\n"
+                "\n"
+                "[1..3]: \n"
+                "Instructions\n"
+                "  1: foo\n"
+                "  2: bar\n"
+                "  3: baz\n"
+                "[1..3]: ")
+            self.assertEqual(read_contents(mocked_io.stderr), "")
 
 
 if __name__ == "__main__":

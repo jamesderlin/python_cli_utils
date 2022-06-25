@@ -165,6 +165,95 @@ def choices_prompt(
         try:
             return choices_table[normalized_response]
         except KeyError:
-            print(invalid_handler(raw_response), file=sys.stderr)
+            print(invalid_handler(raw_response))
 
         print()
+
+
+def numbered_choices_prompt(
+    choices: typing.Collection[str],
+    *,
+    default_index: typing.Optional[int] = None,
+    preamble: str = "",
+    prompt: typing.Optional[str] = None,
+    item_formatter: typing.Optional[typing.Callable[[str], str]] = None,
+) -> typing.Optional[int]:
+    """
+    Prompts the user to choose from a potentially variable list of choices.
+    `numbered_choices_prompt` is more suitable than `choices_prompt` for cases
+    where the choices are not known until runtime.
+
+    Returns the (zero-based) index of the selected choice.  If there is only
+    one choice, returns 0 without prompting.
+
+    Returns `None` if the user cancels, quits the prompt, or if `choices` is
+    empty.
+
+    `default_index` specifies the (zero-based) index of the choice to use as
+    the default if the user accepts the prompt with empty input (an empty
+    string or a string consisting entirely of whitespace).
+
+    `prompt` specifies the string to print whenever the user is prompted for
+    input.  If `None`, a default prompt strng will be generated automatically.
+
+    `preamble` specifies a string to print before the list of choices is
+    printed. `preamble` and the list of choices are printed before the initial
+    prompt and whenever the user explicitly requests them by entering `"help"`.
+    """
+    if not choices:
+        return None
+
+    max_choice = len(choices)
+    if max_choice == 1:
+        # If there's only one choice, don't bother prompting.
+        return 0
+
+    assert (default_index is None) or (0 <= default_index < max_choice)
+
+    def identity(x: typing.Any) -> typing.Any:
+        return x
+
+    item_formatter = item_formatter or identity
+
+    instructions = "\n".join([
+        *((preamble,) if preamble else ()),
+        *(item_formatter(f"  {i}: {choice}")
+          for (i, choice) in enumerate(choices, 1)),
+    ])
+
+    print(instructions)
+
+    default_hint = "" if default_index is None else f"[{default_index + 1}] "
+    default_prompt = (f"[1, 2]: {default_hint}" if max_choice == 2 else
+                      f"[1..{max_choice}]: {default_hint}")
+    prompt = f"{prompt} {default_prompt}" if prompt else default_prompt
+
+    allowed_inputs = \
+        ([typing.cast(typing.Sequence[str], (str(i + 1),))
+         for i in range(max_choice)]
+         + [("?", "h", "help"), ("q", "quit")])
+
+    def invalid_handler(response: str) -> str:
+        return (f"\"{response}\" is not a valid choice.\n"
+                f"The entered choice must be between 1 and {max_choice}, "
+                f"inclusive.\n"
+                f"Enter \"help\" to show the choices again or \"quit\" to "
+                f"quit.")
+
+    while True:
+        response = choices_prompt(
+            prompt,
+            allowed_inputs,
+            default=None if default_index is None else str(default_index + 1),
+            invalid_handler=invalid_handler)
+        if response is None or response == "q":
+            return None
+
+        if response == "?":
+            print()
+            print(instructions)
+            continue
+
+        choice = int(response)
+        assert 1 <= choice <= max_choice
+        return choice - 1
