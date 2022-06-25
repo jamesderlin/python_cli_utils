@@ -1,3 +1,3 @@
-from .choices_prompt import choices_prompt, flush_input
+from .choices_prompt import flush_input, choices_prompt, numbered_choices_prompt
 
-__all__ = ["choices_prompt", "flush_input"]
+__all__ = ["flush_input", "choices_prompt", "numbered_choices_prompt"]

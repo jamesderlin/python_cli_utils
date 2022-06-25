@@ -25,7 +25,10 @@ import typing
 
 
 def flush_input() -> None:
-    """Clears pending input from `sys.stdin`."""
+    """Clears pending input from `sys.stdin` if it is a TTY."""
+    if not sys.stdin.isatty():
+        return
+
     internal_helper = getattr(flush_input, "internal_helper", None)
     if internal_helper is not None:
         internal_helper()
