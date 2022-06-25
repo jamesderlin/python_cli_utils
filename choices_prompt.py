@@ -156,8 +156,15 @@ def choices_prompt(
             # Answering prompts with already-buffered input (particularly with
             # empty lines) is potentially dangerous, so disallow it.
             flush_input()
-            print(prompt, end="", file=file, flush=True)
-            raw_response = input()
+            try:
+                # `input` always writes to `sys.stdout`; temporarily redirect
+                # its output.
+                old_stdout = sys.stdout
+                sys.stdout = file
+                raw_response = input(prompt)
+            finally:
+                sys.stdout = old_stdout
+
             normalized_response = normalize_choice_str(raw_response)
         except EOFError:
             print(file=file)
