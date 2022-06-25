@@ -11,7 +11,7 @@ import typing
 import unittest
 import unittest.mock
 
-import choices_prompt
+import python_cli_utils
 
 
 whitespace = re.compile(r"\s+")
@@ -19,7 +19,7 @@ whitespace = re.compile(r"\s+")
 
 def fake_flush_input(*_args: typing.Any, **_kwargs: typing.Any) -> None:
     """
-    Fake implementation for `choices_prompt.flush_input` that does nothing.
+    Fake implementation for `python_cli_utils.flush_input` that does nothing.
     """
 
 
@@ -51,7 +51,7 @@ def mock_io(*, input: str = "") -> typing.Iterator[MockedIO]:  # pylint: disable
                              new_callable=io.StringIO) as mock_stdout, \
          unittest.mock.patch("sys.stderr",
                              new_callable=io.StringIO) as mock_stderr, \
-         unittest.mock.patch("choices_prompt.flush_input", fake_flush_input):
+         unittest.mock.patch("python_cli_utils.flush_input", fake_flush_input):
 
         if input:
             mock_stdin.write(input)
@@ -73,7 +73,7 @@ def expect_test_choices(
     expected_stderr: str = "",
 ) -> None:
     """
-    Verifies the typical behavior of `choices_prompt.choices_prompt`, setting
+    Verifies the typical behavior of `python_cli_utils.choices_prompt`, setting
     up necessary mocks.
     """
     response: typing.Optional[str] = None
@@ -82,9 +82,9 @@ def expect_test_choices(
         expected_stdout = prompt
 
     with mock_io(input=input) as mocked_io:
-        response = choices_prompt.choices_prompt(prompt=prompt,
-                                                 choices=choices,
-                                                 default=default)
+        response = python_cli_utils.choices_prompt(prompt=prompt,
+                                                   choices=choices,
+                                                   default=default)
         if response is None:
             expected_stdout += "\n"
 
@@ -95,7 +95,7 @@ def expect_test_choices(
 
 
 class TestChoicesPrompt(unittest.TestCase):
-    """Tests `choices_prompt.choices_prompt`."""
+    """Tests `python_cli_utils.choices_prompt`."""
     def test_basic_input(self) -> None:
         """Tests that entered choices are returned."""
         expect_test_choices(self,
@@ -239,7 +239,7 @@ class TestChoicesPrompt(unittest.TestCase):
         """Tests that the default value must match one of the choices."""
         with mock_io():
             self.assertRaises(AssertionError,
-                              choices_prompt.choices_prompt,
+                              python_cli_utils.choices_prompt,
                               prompt="Test message? ",
                               choices=("Foo", "Bar", "Baz"),
                               default="qux")
@@ -250,18 +250,18 @@ class TestChoicesPrompt(unittest.TestCase):
         empty.
         """
         with mock_io() as mocked_io:
-            response = choices_prompt.choices_prompt("Test message? ", ())
+            response = python_cli_utils.choices_prompt("Test message? ", ())
             self.assertIs(response, None)
             self.assertFalse(read_contents(mocked_io.stdout))
             self.assertFalse(read_contents(mocked_io.stderr))
 
 
 class TestNumberedChoicesPrompt(unittest.TestCase):
-    """Tests `choices_prompt.numbered_choices_prompt`."""
+    """Tests `python_cli_utils.numbered_choices_prompt`."""
     def test_instructions(self) -> None:
         """Tests that instructions and choices are printed."""
         with mock_io(input="1\n") as mocked_io:
-            response = choices_prompt.numbered_choices_prompt(
+            response = python_cli_utils.numbered_choices_prompt(
                 ("foo", "bar", "baz"),
                 preamble="Instructions",
                 prompt="Choose wisely",
@@ -278,7 +278,7 @@ class TestNumberedChoicesPrompt(unittest.TestCase):
     def test_default_prompt(self) -> None:
         """Tests the default prompt."""
         with mock_io(input="2\n") as mocked_io:
-            response = choices_prompt.numbered_choices_prompt(
+            response = python_cli_utils.numbered_choices_prompt(
                 ("foo", "bar", "baz"),
             )
             self.assertEqual(response, 1)
@@ -292,7 +292,7 @@ class TestNumberedChoicesPrompt(unittest.TestCase):
     def test_no_choices(self) -> None:
         """Tests that nothing is printed if there are no choices."""
         with mock_io() as mocked_io:
-            response = choices_prompt.numbered_choices_prompt(())
+            response = python_cli_utils.numbered_choices_prompt(())
             self.assertIs(response, None)
             self.assertEqual(read_contents(mocked_io.stdout), "")
             self.assertEqual(read_contents(mocked_io.stderr), "")
@@ -302,7 +302,7 @@ class TestNumberedChoicesPrompt(unittest.TestCase):
         Tests a single choice is automatically returned with nothing printed.
         """
         with mock_io() as mocked_io:
-            response = choices_prompt.numbered_choices_prompt(("foo",))
+            response = python_cli_utils.numbered_choices_prompt(("foo",))
             self.assertEqual(response, 0)
             self.assertEqual(read_contents(mocked_io.stdout), "")
             self.assertEqual(read_contents(mocked_io.stderr), "")
@@ -310,7 +310,7 @@ class TestNumberedChoicesPrompt(unittest.TestCase):
     def test_default_index(self) -> None:
         """Tests the `default index` parameter."""
         with mock_io(input="\n") as mocked_io:
-            response = choices_prompt.numbered_choices_prompt(
+            response = python_cli_utils.numbered_choices_prompt(
                 ("foo", "bar", "baz"),
                 default_index=0,
             )
@@ -355,7 +355,7 @@ class TestNumberedChoicesPrompt(unittest.TestCase):
         )
 
         with mock_io(input=test_input) as mocked_io:
-            response = choices_prompt.numbered_choices_prompt(
+            response = python_cli_utils.numbered_choices_prompt(
                 choices,
                 preamble=preamble,
             )
@@ -365,7 +365,7 @@ class TestNumberedChoicesPrompt(unittest.TestCase):
 
         # Test that all output can be sent to `sys.stderr` instead.
         with mock_io(input=test_input) as mocked_io:
-            response = choices_prompt.numbered_choices_prompt(
+            response = python_cli_utils.numbered_choices_prompt(
                 choices,
                 preamble=preamble,
                 file=sys.stderr
@@ -373,6 +373,24 @@ class TestNumberedChoicesPrompt(unittest.TestCase):
             self.assertIs(response, None)
             self.assertEqual(read_contents(mocked_io.stdout), "")
             self.assertEqual(read_contents(mocked_io.stderr), expected_output)
+
+
+class TestTTYUtils(unittest.TestCase):
+    """Tests `tty_utils` functions."""
+    def test_ellipsize(self) -> None:
+        """Tests `python_cli_utils.ellipsize`."""
+        ellipsize = python_cli_utils.ellipsize
+        self.assertRaises(AssertionError, ellipsize, "Lorem ipsum", -1)
+        self.assertRaises(AssertionError, ellipsize, "Lorem ipsum", 0)
+        self.assertEqual(ellipsize("Lorem ipsum", 1), "L")
+        self.assertEqual(ellipsize("Lorem ipsum", 2), "Lo")
+        self.assertEqual(ellipsize("Lorem ipsum", 3), "...")
+        self.assertEqual(ellipsize("Lorem ipsum", 4), "L...")
+        self.assertEqual(ellipsize("Lorem ipsum", 5), "Lo...")
+        self.assertEqual(ellipsize("Lorem ipsum", 10), "Lorem i...")
+        self.assertEqual(ellipsize("Lorem ipsum", 11), "Lorem ipsum")
+        self.assertEqual(ellipsize("Lorem ipsum", 12), "Lorem ipsum")
+        self.assertEqual(ellipsize("Lorem ipsum", 20), "Lorem ipsum")
 
 
 if __name__ == "__main__":
