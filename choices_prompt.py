@@ -24,14 +24,17 @@ import sys
 import typing
 
 
+__flush_input_helper: typing.Optional[typing.Callable[[], None]] = None
+
+
 def flush_input() -> None:
     """Clears pending input from `sys.stdin` if it is a TTY."""
     if not sys.stdin.isatty():
         return
 
-    internal_helper = getattr(flush_input, "internal_helper", None)
-    if internal_helper is not None:
-        internal_helper()
+    global __flush_input_helper
+    if __flush_input_helper is not None:
+        __flush_input_helper()
         return
 
     import importlib  # pylint: disable=import-outside-toplevel
@@ -42,11 +45,11 @@ def flush_input() -> None:
     except ModuleNotFoundError:
         pass
     else:
-        def _internal_helper() -> None:
+        def flush_posix() -> None:
             termios.tcflush(sys.stdin, termios.TCIFLUSH)
 
-        flush_input.internal_helper = _internal_helper  # type: ignore
-        _internal_helper()
+        __flush_input_helper = flush_posix
+        __flush_input_helper()
         return
 
     # For Windows systems.
@@ -55,12 +58,12 @@ def flush_input() -> None:
     except ModuleNotFoundError:
         pass
     else:
-        def _internal_helper() -> None:
+        def flush_windows() -> None:
             while msvcrt.kbhit():
                 msvcrt.getch()
 
-        flush_input.internal_helper = _internal_helper  # type: ignore
-        _internal_helper()
+        __flush_input_helper = flush_windows
+        __flush_input_helper()
         return
 
 
