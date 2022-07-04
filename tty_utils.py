@@ -122,9 +122,16 @@ def paged_output(
         yield sys.stdout
         return
 
-    with subprocess.Popen((pager,),
-                          stdin=subprocess.PIPE,
-                          universal_newlines=True) as proc:
+    try:
+        proc = subprocess.Popen((pager,),
+                                stdin=subprocess.PIPE,
+                                universal_newlines=True)
+    except OSError as e:
+        print(f"Failed to spawn pager: {e}", file=sys.stderr)
+        yield sys.stdout
+        return
+
+    with proc:
         __current_paged_output_proc = proc
         assert proc.stdin is not None
         try:
